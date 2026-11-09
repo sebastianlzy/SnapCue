@@ -8,7 +8,7 @@ final class Editor: NSWindowController {
     init(image: CGImage) {
         let canvas = Canvas(draft: Draft(image: image))
         self.canvas = canvas
-        let tools = NSSegmentedControl(labels: ["Arrow", "Label"], trackingMode: .selectOne,
+        let tools = NSSegmentedControl(labels: ["Arrow", "Label", "Select"], trackingMode: .selectOne,
                                        target: nil, action: nil)
         tools.selectedSegment = 0
         tools.setAccessibilityLabel("Markup tool")
@@ -34,6 +34,7 @@ final class Editor: NSWindowController {
                               backing: .buffered, defer: false)
         window.title = "SnapCue"
         window.isReleasedWhenClosed = false
+        window.isMovableByWindowBackground = true
         window.minSize = CGSize(width: 320, height: 240)
         window.contentView = content
         window.center()
@@ -73,10 +74,13 @@ final class Editor: NSWindowController {
 
 private final class Canvas: NSView {
     var draft: Draft
-    private var isLabelTool = false
+    private enum Tool: Int { case arrow, label, select }
+    private var tool = Tool.arrow
+    private var movingIndex: Int?
     private var start: CGPoint?
     private var preview: Mark?
     override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
 
     init(draft: Draft) {
         self.draft = draft
@@ -100,36 +104,60 @@ private final class Canvas: NSView {
         bounds.fill()
         let imageBounds = imageBounds
         guard !imageBounds.isEmpty else { return }
-        draft.draw(in: imageBounds, preview: preview)
+        var displayed = draft
+        if let movingIndex, let preview {
+            displayed.marks[movingIndex] = preview
+        }
+        displayed.draw(in: imageBounds, preview: movingIndex == nil ? preview : nil)
     }
 
     @objc func selectTool(_ sender: NSSegmentedControl) {
-        isLabelTool = sender.selectedSegment == 1
+        tool = Tool(rawValue: sender.selectedSegment) ?? .arrow
     }
 
     override func mouseDown(with event: NSEvent) {
         guard imageBounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         let point = documentPoint(event)
-        if isLabelTool {
+        switch tool {
+        case .label:
             promptForLabel(at: point)
-        } else {
+        case .arrow:
             start = point
+        case .select:
+            let tolerance = 5 * draft.size.width / imageBounds.width
+            movingIndex = draft.markIndex(at: point, tolerance: tolerance)
+            if movingIndex != nil { start = point }
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard let start else { return }
-        preview = .arrow(start, documentPoint(event))
+        preview = mark(at: documentPoint(event), from: start)
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
         guard let start else { return }
         let end = documentPoint(event)
-        if start != end { draft.marks.append(.arrow(start, end)) }
+        if start != end {
+            let mark = mark(at: end, from: start)
+            if let movingIndex {
+                draft.marks[movingIndex] = mark
+            } else {
+                draft.marks.append(mark)
+            }
+        }
         self.start = nil
+        movingIndex = nil
         preview = nil
         needsDisplay = true
+    }
+
+    private func mark(at end: CGPoint, from start: CGPoint) -> Mark {
+        if let movingIndex {
+            return draft.movedMark(at: movingIndex, by: CGPoint(x: end.x - start.x, y: end.y - start.y))
+        }
+        return .arrow(start, end)
     }
 
     private func documentPoint(_ event: NSEvent) -> CGPoint {
