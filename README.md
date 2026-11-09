@@ -9,6 +9,6 @@ sh build-app.sh
 open dist/SnapCue.app
 ```
 
-Click the viewfinder icon in the menu bar and choose **Capture Region**, or press Control–Option–Command–4. Allow screen recording in System Settings when prompted. Drag on one display to capture an area, or press Escape to cancel. In the editor, drag with **Arrow** selected, or choose **Label** and click the image. Use **Copy PNG** to paste the result into another app.
+Choose **Capture Region** in the launch window or from the viewfinder menu bar icon, or press Control–Option–Command–4. Allow screen recording in System Settings when prompted. Drag on one display to capture an area, or press Escape to cancel. In the editor, drag with **Arrow** selected, or choose **Label** and click the image. Use **Copy PNG** to paste the result into another app.
 
 Run the automated checks with `swift test`. See the [first workflow spec](docs/specs/001-capture-to-clipboard.md) and the [implementation plan](docs/implementation-plan.md).
