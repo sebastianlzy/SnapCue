@@ -9,6 +9,7 @@ final class SnapCueApp: NSObject, NSApplicationDelegate {
     private var handler: EventHandlerRef?
     private let picker = RegionPicker()
     private var editor: Editor?
+    private var launchWindow: NSWindow?
     private var selecting = false
     private var capturing = false
 
@@ -32,6 +33,11 @@ final class SnapCueApp: NSObject, NSApplicationDelegate {
         }
 
         let mainMenu = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu(title: "SnapCue")
+        appMenu.addItem(withTitle: "Quit SnapCue", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        mainMenu.addItem(appItem)
         let edit = NSMenu(title: "Edit")
         edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
@@ -41,6 +47,42 @@ final class SnapCueApp: NSObject, NSApplicationDelegate {
         editItem.submenu = edit
         mainMenu.addItem(editItem)
         NSApp.mainMenu = mainMenu
+        showLaunchWindow()
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if !hasVisibleWindows { showEditor() }
+        return true
+    }
+
+    private func showLaunchWindow() {
+        if launchWindow == nil {
+            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 360, height: 175),
+                                  styleMask: [.titled, .closable, .miniaturizable],
+                                  backing: .buffered, defer: false)
+            window.title = "SnapCue"
+            window.isReleasedWhenClosed = false
+            let instructions = NSTextField(labelWithString: "Capture a region, then add an arrow or label.")
+            let capture = NSButton(title: "Capture Region", target: self, action: #selector(startCapture))
+            capture.bezelStyle = .rounded
+            capture.keyEquivalent = "\r"
+            let stack = NSStackView(views: [instructions, capture])
+            stack.orientation = .vertical
+            stack.alignment = .centerX
+            stack.spacing = 16
+            stack.translatesAutoresizingMaskIntoConstraints = false
+            if let content = window.contentView {
+                content.addSubview(stack)
+                NSLayoutConstraint.activate([
+                    stack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+                    stack.centerYAnchor.constraint(equalTo: content.centerYAnchor)
+                ])
+            }
+            window.center()
+            launchWindow = window
+        }
+        NSApp.activate()
+        launchWindow?.makeKeyAndOrderFront(nil)
     }
 
     private func registerHotKey() -> Bool {
@@ -84,6 +126,7 @@ final class SnapCueApp: NSObject, NSApplicationDelegate {
                 guard let image = try await ScreenCapture.region(on: screen, from: start, to: end) else { return }
                 editor?.close()
                 editor = Editor(image: image)
+                launchWindow?.orderOut(nil)
                 showEditor()
             } catch {
                 if CGPreflightScreenCaptureAccess() {
@@ -96,7 +139,10 @@ final class SnapCueApp: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showEditor() {
-        guard let editor else { return }
+        guard let editor else {
+            showLaunchWindow()
+            return
+        }
         NSApp.activate()
         editor.showWindow(nil)
         editor.window?.makeKeyAndOrderFront(nil)
@@ -119,5 +165,5 @@ final class SnapCueApp: NSObject, NSApplicationDelegate {
 let app = NSApplication.shared
 let delegate = SnapCueApp()
 app.delegate = delegate
-app.setActivationPolicy(.accessory)
+app.setActivationPolicy(.regular)
 app.run()
