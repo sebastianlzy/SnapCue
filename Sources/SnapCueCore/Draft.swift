@@ -17,7 +17,7 @@ public struct Draft {
     public var size: CGSize { CGSize(width: image.width, height: image.height) }
 
     /// Draw into a flipped AppKit graphics context in document pixels.
-    public func draw(in bounds: CGRect, preview: Mark? = nil) {
+    public func draw(in bounds: CGRect, preview: Mark? = nil, selectedIndex: Int? = nil) {
         NSGraphicsContext.saveGraphicsState()
         defer { NSGraphicsContext.restoreGraphicsState() }
         NSBezierPath(rect: bounds).addClip()
@@ -32,7 +32,9 @@ public struct Draft {
             operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil
         )
 
-        for mark in marks { draw(mark) }
+        for (index, mark) in marks.enumerated() {
+            draw(mark, selected: index == selectedIndex)
+        }
         if let preview { draw(preview) }
     }
 
@@ -103,7 +105,7 @@ public struct Draft {
         return (label, CGRect(origin: origin, size: box))
     }
 
-    private func draw(_ mark: Mark) {
+    private func draw(_ mark: Mark, selected: Bool = false) {
         switch mark {
         case let .arrow(start, end):
             let path = NSBezierPath()
@@ -113,7 +115,7 @@ public struct Draft {
             }
             path.lineCapStyle = .round
             path.lineWidth = 2.8 * unit
-            NSColor.white.setStroke()
+            (selected ? NSColor.controlAccentColor : .white).setStroke()
             path.stroke()
             path.lineWidth = 1.6 * unit
             NSColor.systemRed.setStroke()
@@ -122,7 +124,13 @@ public struct Draft {
             let (label, box) = labelLayout(at: point, text: text)
             let padding = 3 * unit
             NSColor.black.withAlphaComponent(0.8).setFill()
-            NSBezierPath(roundedRect: box, xRadius: padding, yRadius: padding).fill()
+            let outline = NSBezierPath(roundedRect: box, xRadius: padding, yRadius: padding)
+            outline.fill()
+            if selected {
+                NSColor.controlAccentColor.setStroke()
+                outline.lineWidth = 1.5 * unit
+                outline.stroke()
+            }
             label.draw(at: CGPoint(x: box.minX + padding, y: box.minY + padding))
         }
     }
