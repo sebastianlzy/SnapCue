@@ -12,6 +12,8 @@ final class RegionPicker {
                                        backing: .buffered, defer: false)
             panel.backgroundColor = .clear
             panel.isOpaque = false
+            panel.ignoresMouseEvents = false
+            panel.hidesOnDeactivate = false
             panel.hasShadow = false
             panel.level = .screenSaver
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -20,6 +22,7 @@ final class RegionPicker {
             view.onSelection = { start, end in onSelection(screen, start, end) }
             view.onCancel = onCancel
             panel.contentView = view
+            panel.initialFirstResponder = view
             panels.append(panel)
             panel.orderFrontRegardless()
             if screen.frame.contains(NSEvent.mouseLocation) {
