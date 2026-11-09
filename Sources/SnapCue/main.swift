@@ -62,6 +62,7 @@ final class SnapCueApp: NSObject, NSApplicationDelegate {
                                   backing: .buffered, defer: false)
             window.title = "SnapCue"
             window.isReleasedWhenClosed = false
+            window.isMovableByWindowBackground = true
             let instructions = NSTextField(labelWithString: "Capture a region, then add an arrow or label.")
             let capture = NSButton(title: "Capture Region", target: self, action: #selector(startCapture))
             capture.bezelStyle = .rounded
