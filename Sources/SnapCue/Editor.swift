@@ -1,5 +1,6 @@
 import AppKit
 import SnapCueCore
+import UniformTypeIdentifiers
 
 @MainActor
 final class Editor: NSWindowController {
@@ -14,7 +15,11 @@ final class Editor: NSWindowController {
         tools.setAccessibilityLabel("Markup tool")
         let copy = NSButton(title: "Copy PNG", target: nil, action: nil)
         copy.keyEquivalent = "\r"
-        let bar = NSStackView(views: [tools, copy])
+        let drag = PNGDragHandle(labelWithString: "Drag PNG")
+        drag.toolTip = "Drag the annotated screenshot into a Finder folder"
+        drag.setAccessibilityLabel("Drag PNG to Finder")
+        drag.png = { [weak canvas] in canvas?.draft.png() }
+        let bar = NSStackView(views: [tools, copy, drag])
         bar.spacing = 12
         let content = NSView()
         for view in [bar, canvas] {
@@ -39,6 +44,7 @@ final class Editor: NSWindowController {
         window.contentView = content
         window.center()
         super.init(window: window)
+        canvas.toolControl = tools
         tools.target = canvas
         tools.action = #selector(Canvas.selectTool(_:))
         copy.target = self
@@ -76,6 +82,7 @@ private final class Canvas: NSView {
     var draft: Draft
     private enum Tool: Int { case arrow, label, select }
     private var tool = Tool.arrow
+    weak var toolControl: NSSegmentedControl?
     private var movingIndex: Int?
     private var start: CGPoint?
     private var preview: Mark?
@@ -118,15 +125,22 @@ private final class Canvas: NSView {
     override func mouseDown(with event: NSEvent) {
         guard imageBounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         let point = documentPoint(event)
+        let tolerance = 5 * draft.size.width / imageBounds.width
+        if let index = draft.markIndex(at: point, tolerance: tolerance) {
+            tool = .select
+            toolControl?.selectedSegment = Tool.select.rawValue
+            movingIndex = index
+            start = point
+            return
+        }
+
         switch tool {
         case .label:
             promptForLabel(at: point)
         case .arrow:
             start = point
         case .select:
-            let tolerance = 5 * draft.size.width / imageBounds.width
-            movingIndex = draft.markIndex(at: point, tolerance: tolerance)
-            if movingIndex != nil { start = point }
+            break
         }
     }
 
@@ -185,6 +199,61 @@ private final class Canvas: NSView {
             guard let self, response == .alertFirstButtonReturn, !text.isEmpty else { return }
             self.draft.marks.append(.label(point, text))
             self.needsDisplay = true
+        }
+    }
+}
+
+
+private final class PNGDragHandle: NSTextField, NSDraggingSource {
+    var png: (() -> Data?)?
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .openHand)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(convert(point, from: superview)) ? self : nil
+    }
+
+    override func mouseDown(with event: NSEvent) {}
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let data = png?(),
+              let icon = NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
+        else { return }
+
+        let promise = NSFilePromiseProvider(fileType: UTType.png.identifier, delegate: PNGFileWriter.shared)
+        promise.userInfo = data
+        let item = NSDraggingItem(pasteboardWriter: promise)
+        let point = convert(event.locationInWindow, from: nil)
+        item.setDraggingFrame(CGRect(x: point.x - 16, y: point.y - 16, width: 32, height: 32), contents: icon)
+        beginDraggingSession(with: [item], event: event, source: self)
+    }
+
+    func draggingSession(_ session: NSDraggingSession,
+                         sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        context == .outsideApplication ? .copy : []
+    }
+}
+
+private final class PNGFileWriter: NSObject, NSFilePromiseProviderDelegate {
+    @MainActor static let shared = PNGFileWriter()
+
+    func filePromiseProvider(_ provider: NSFilePromiseProvider, fileNameForType fileType: String) -> String {
+        "SnapCue.png"
+    }
+
+    func filePromiseProvider(_ provider: NSFilePromiseProvider, writePromiseTo url: URL,
+                             completionHandler: @escaping (Error?) -> Void) {
+        do {
+            guard let data = provider.userInfo as? Data else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            try data.write(to: url, options: .atomic)
+            completionHandler(nil)
+        } catch {
+            completionHandler(error)
         }
     }
 }
