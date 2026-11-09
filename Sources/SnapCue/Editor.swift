@@ -19,7 +19,11 @@ final class Editor: NSWindowController {
         drag.toolTip = "Drag the annotated screenshot into a Finder folder"
         drag.setAccessibilityLabel("Drag PNG to Finder")
         drag.png = { [weak canvas] in canvas?.draft.png() }
-        let bar = NSStackView(views: [tools, copy, drag])
+        let delete = NSButton(title: "Delete", target: canvas, action: #selector(Canvas.deleteSelection(_:)))
+        delete.toolTip = "Delete the selected annotation"
+        delete.isEnabled = false
+        canvas.deleteButton = delete
+        let bar = NSStackView(views: [tools, delete, copy, drag])
         bar.spacing = 12
         let content = NSView()
         for view in [bar, canvas] {
@@ -40,7 +44,7 @@ final class Editor: NSWindowController {
         window.title = "SnapCue"
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
-        window.minSize = CGSize(width: 320, height: 240)
+        window.minSize = CGSize(width: 420, height: 240)
         window.contentView = content
         window.center()
         super.init(window: window)
@@ -83,7 +87,13 @@ private final class Canvas: NSView {
     private enum Tool: Int { case arrow, label, select }
     private var tool = Tool.arrow
     weak var toolControl: NSSegmentedControl?
-    private var movingIndex: Int?
+    weak var deleteButton: NSButton?
+    private var selectedIndex: Int? {
+        didSet {
+            deleteButton?.isEnabled = selectedIndex != nil
+            needsDisplay = true
+        }
+    }
     private var start: CGPoint?
     private var preview: Mark?
     override var isFlipped: Bool { true }
@@ -112,24 +122,28 @@ private final class Canvas: NSView {
         let imageBounds = imageBounds
         guard !imageBounds.isEmpty else { return }
         var displayed = draft
-        if let movingIndex, let preview {
-            displayed.marks[movingIndex] = preview
+        if let selectedIndex, let preview {
+            displayed.marks[selectedIndex] = preview
         }
-        displayed.draw(in: imageBounds, preview: movingIndex == nil ? preview : nil)
+        displayed.draw(in: imageBounds, preview: selectedIndex == nil ? preview : nil,
+                       selectedIndex: selectedIndex)
     }
 
     @objc func selectTool(_ sender: NSSegmentedControl) {
         tool = Tool(rawValue: sender.selectedSegment) ?? .arrow
+        if tool != .select { selectedIndex = nil }
     }
 
     override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        selectedIndex = nil
         guard imageBounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         let point = documentPoint(event)
         let tolerance = 5 * draft.size.width / imageBounds.width
         if let index = draft.markIndex(at: point, tolerance: tolerance) {
             tool = .select
             toolControl?.selectedSegment = Tool.select.rawValue
-            movingIndex = index
+            selectedIndex = index
             start = point
             return
         }
@@ -155,21 +169,39 @@ private final class Canvas: NSView {
         let end = documentPoint(event)
         if start != end {
             let mark = mark(at: end, from: start)
-            if let movingIndex {
-                draft.marks[movingIndex] = mark
+            if let selectedIndex {
+                draft.marks[selectedIndex] = mark
             } else {
                 draft.marks.append(mark)
             }
         }
         self.start = nil
-        movingIndex = nil
         preview = nil
         needsDisplay = true
     }
 
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        if let key = event.charactersIgnoringModifiers,
+           key == "\u{7f}" || key == "\u{f728}", selectedIndex != nil {
+            deleteSelection(nil)
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
+    @objc func deleteSelection(_ sender: Any?) {
+        guard let selectedIndex else { return }
+        draft.marks.remove(at: selectedIndex)
+        self.selectedIndex = nil
+        start = nil
+        preview = nil
+    }
+
     private func mark(at end: CGPoint, from start: CGPoint) -> Mark {
-        if let movingIndex {
-            return draft.movedMark(at: movingIndex, by: CGPoint(x: end.x - start.x, y: end.y - start.y))
+        if let selectedIndex {
+            return draft.movedMark(at: selectedIndex, by: CGPoint(x: end.x - start.x, y: end.y - start.y))
         }
         return .arrow(start, end)
     }
