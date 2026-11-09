@@ -74,6 +74,22 @@ struct FirstWorkflowTests {
         #expect(arrow[0] > arrow[1] && arrow[0] > arrow[2])
         let label = pixel(90, 63)
         #expect(label[1] < 100 && label[2] < 100)
+
+        let arrowIndex = try #require(draft.markIndex(at: CGPoint(x: 30, y: 20), tolerance: 5))
+        let labelIndex = try #require(draft.markIndex(at: CGPoint(x: 90, y: 63), tolerance: 5))
+        draft.marks[arrowIndex] = draft.movedMark(at: arrowIndex, by: CGPoint(x: 0, y: 20))
+        draft.marks[labelIndex] = draft.movedMark(at: labelIndex, by: CGPoint(x: -35, y: 0))
+        #expect(draft.markIndex(at: CGPoint(x: 30, y: 20), tolerance: 5) == nil)
+        #expect(draft.markIndex(at: CGPoint(x: 30, y: 40), tolerance: 5) == arrowIndex)
+        #expect(draft.markIndex(at: CGPoint(x: 55, y: 63), tolerance: 5) == labelIndex)
+
+        let movedPNG = try #require(draft.png())
+        let movedSource = try #require(CGImageSourceCreateWithData(movedPNG as CFData, nil))
+        let movedImage = try #require(CGImageSourceCreateImageAtIndex(movedSource, 0, nil))
+        bitmap.draw(movedImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        #expect(pixel(30, 20) == [0, 255, 255, 255])
+        #expect(pixel(30, 40)[0] > pixel(30, 40)[1])
+        #expect(pixel(55, 63)[1] < 100)
     }
 }
 
